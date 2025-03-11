@@ -1,8 +1,8 @@
 terraform {
   required_providers {
     google = {
-      source  = "hashicorp/google"
-      version = "6.8.0"
+      source = "hashicorp/google"
+      #version = "6.24.0"
     }
   }
 }
@@ -40,29 +40,47 @@ resource "null_resource" "send_to_nautobot" {
   for_each = google_compute_instance.vm_instances
 
   provisioner "local-exec" {
-    when = "create"
+    when    = "create"
     command = <<EOT
-      # Cleanup file if it exists
-      rm devices.txt
-
       # POST Request and safe answer
       RESPONSE=$(curl -X POST ${var.nautobot_link}/api/dcim/devices/ \
         -H "Authorization: Token ${var.nautobot_token}" \
         -H "Content-Type: application/json" \
         -d '{
             "name": "${each.key}",  
-            "device_type": "6301cd13-9161-44de-a88e-7a5a2cc0d6b8", 
-            "role": "e0b23d77-fbfa-4106-8e03-09fd00d7dfc8", 
-            "location": "ac0506d2-1ddb-4175-8382-2fb3cbf78f73",
-            "status": "023e4472-398a-4351-a82f-743e69085cc3", 
+            "device_type": "${var.device_type_veos}", 
+            "role": "${var.role_router}", 
+            "location": "${var.location}",
+            "status": "${var.status}", 
             "comments": "Automatically generated through Tofu on GCP. IP: ${each.value.network_interface[0].access_config[0].nat_ip}"
         }')
       
       # extract DEVICE_ID
       DEVICE_ID=$(echo $RESPONSE | jq -r '.id')
 
-      echo "${each.key}: $DEVICE_ID" >> devices.txt
+      echo "${each.key}:$DEVICE_ID" >> devices.txt
     EOT
   }
   depends_on = [google_compute_instance.vm_instances]
+}
+
+
+resource "null_resource" "destroy_device_in_nautobot" {
+  triggers = {
+    nautobot_link  = var.nautobot_link
+    nautobot_token = var.nautobot_token
+  }
+
+  provisioner "local-exec" {
+    when    = "destroy"
+    command = <<EOT
+      while IFS=: read -r name id; do
+        echo "Delete Device $name with ID $id"
+        curl -X DELETE "${self.triggers.nautobot_link}/api/dcim/devices/$id/" \
+             -H "Authorization: Token ${self.triggers.nautobot_token}"
+      done < devices.txt
+
+      rm devices.txt
+    EOT
+  }
 }

@@ -1,3 +1,0 @@
-tofu-server1: 8c4e3f44-ba99-47fc-a26a-ab25acbe6f1a
-tofu-server3: 458620e2-a5b2-4e43-8499-8ea97f4fb817
-tofu-server2: 
